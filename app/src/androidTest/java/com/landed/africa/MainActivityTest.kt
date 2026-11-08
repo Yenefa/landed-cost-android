@@ -118,6 +118,12 @@ class MainActivityTest {
     }
 
     @Test
+    fun saveButton_existsAndIsAccessible() {
+        rule.onNodeWithTag("btn-save").performScrollTo().assertIsDisplayed().assertHeightIsAtLeast(44.dp)
+            .assertContentDescriptionEquals("保存结果卡片到相册")
+    }
+
+    @Test
     fun canScrollToBottom_withoutCrash() {
         rule.onNodeWithTag("cost-bar").performScrollTo().assertIsDisplayed()
         rule.onNodeWithTag("risk-list").performScrollTo().assertIsDisplayed()

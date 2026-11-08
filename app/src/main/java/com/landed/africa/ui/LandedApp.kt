@@ -1,8 +1,12 @@
 package com.landed.africa.ui
 
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -83,8 +87,7 @@ private fun pct(v: Double, digits: Int = 1): String =
 private fun d(s: String): Double = s.toDoubleOrNull() ?: 0.0
 private fun i(s: String): Int = s.toIntOrNull() ?: 1
 
-private fun shareResultCard(context: Context, r: Calc.Result) {
-    val bitmap = com.landed.africa.engine.ShareCard.render(r)
+private fun shareResultCard(context: Context, r: Calc.Result) {    val bitmap = com.landed.africa.engine.ShareCard.render(r)
     val dir = File(context.cacheDir, "share").apply { mkdirs() }
     val file = File(dir, "landed-${System.currentTimeMillis()}.png")
     FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
@@ -103,6 +106,27 @@ private fun shareResultCard(context: Context, r: Calc.Result) {
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
     context.startActivity(Intent.createChooser(send, "分享落地价"))
+}
+
+/** 保存分享卡到系统相册（Android 10+ 走 MediaStore，无需存储权限）。 */
+private fun saveCardToGallery(context: Context, r: Calc.Result) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+        Toast.makeText(context, "当前系统版本请用「分享」保存图片", Toast.LENGTH_SHORT).show()
+        return
+    }
+    val bitmap = com.landed.africa.engine.ShareCard.render(r)
+    val name = "landed-${System.currentTimeMillis()}.png"
+    val values = ContentValues().apply {
+        put(MediaStore.Images.Media.DISPLAY_NAME, name)
+        put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+        put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/落地价")
+    }
+    val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+        ?: throw IllegalStateException("无法创建相册条目")
+    context.contentResolver.openOutputStream(uri)?.use { out ->
+        bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+    } ?: throw IllegalStateException("无法写入相册")
+    Toast.makeText(context, "已保存到相册：Pictures/落地价", Toast.LENGTH_SHORT).show()
 }
 
 @Composable
@@ -318,18 +342,33 @@ private fun CalculatorBody(market: Calc.Market) {
     Column(modifier = Modifier.padding(horizontal = 20.dp)) {
         ResultCard(res)
         Spacer(Modifier.height(10.dp))
-        ShareRow(
-            busy = sharing,
-            onClick = {
-                if (sharing) return@ShareRow
-                sharing = true
-                scope.launch {
-                    runCatching { shareResultCard(context, res) }
-                        .onFailure { Toast.makeText(context, "分享失败：${it.message}", Toast.LENGTH_SHORT).show() }
-                    sharing = false
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            ShareAction(
+                text = if (sharing) "生成中…" else "分享",
+                modifier = Modifier.weight(1f),
+                tag = "btn-share",
+                desc = "分享结果卡片",
+                onClick = {
+                    if (sharing) return@ShareAction
+                    sharing = true
+                    scope.launch {
+                        runCatching { shareResultCard(context, res) }
+                            .onFailure { Toast.makeText(context, "分享失败：${it.message}", Toast.LENGTH_SHORT).show() }
+                        sharing = false
+                    }
                 }
-            }
-        )
+            )
+            ShareAction(
+                text = "保存到相册",
+                modifier = Modifier.weight(1f),
+                tag = "btn-save",
+                desc = "保存结果卡片到相册",
+                onClick = {
+                    runCatching { saveCardToGallery(context, res) }
+                        .onFailure { Toast.makeText(context, "保存失败：${it.message}", Toast.LENGTH_SHORT).show() }
+                }
+            )
+        }
         Spacer(Modifier.height(16.dp))
 
         StepCard("01", "产品与货值", "你卖什么，进多少") {
@@ -493,30 +532,27 @@ private fun ResultCard(r: Calc.Result) {
 }
 
 @Composable
-private fun ShareRow(busy: Boolean, onClick: () -> Unit) {
+private fun ShareAction(
+    text: String,
+    modifier: Modifier = Modifier,
+    tag: String,
+    desc: String,
+    onClick: () -> Unit,
+) {
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(12.dp),
         color = Palette.Ink,
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 44.dp)
-            .testTag("btn-share")
-            .semantics { contentDescription = "分享结果卡片" }
+        modifier = modifier.heightIn(min = 44.dp).testTag(tag).semantics { contentDescription = desc }
     ) {
         Row(
             Modifier.fillMaxWidth().padding(vertical = 12.dp),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("↗", fontSize = 14.sp, color = Palette.ReceiptAccent, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.width(8.dp))
-            Text(
-                if (busy) "正在生成图片…" else "分享这张结果卡",
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                color = Palette.Paper
-            )
+            Text("↗", fontSize = 13.sp, color = Palette.ReceiptAccent, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.width(6.dp))
+            Text(text, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Palette.Paper)
         }
     }
 }
