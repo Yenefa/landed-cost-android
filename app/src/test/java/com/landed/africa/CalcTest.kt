@@ -58,4 +58,43 @@ class CalcTest {
         val c = Calc.compute(Calc.Inputs(dutyKey = "cosmetics", commKey = "beauty"))
         assertTrue(c.certSchemes.contains("NAFDAC"))
     }
+
+    @Test
+    fun allMarkets_produceSaneLocalCurrencyResult() {
+        for (m in Calc.Markets.all) {
+            val r = Calc.compute(
+                Calc.Inputs(
+                    market = m,
+                    fxNGNperUSD = m.fxLocalPerUSD,
+                    certUSD = m.defaultCertUSD,
+                    clearanceUSD = m.defaultClearanceUSD,
+                )
+            )
+            assertTrue("${m.id} 落地成本应 > 0", r.unitNGN > 0)
+            assertTrue("${m.id} 净利润应 > 0", r.netProfitNGN > 0)
+            assertEquals(m.currencyCode, r.currencyCode)
+            assertEquals(m.currencySymbol, r.currencySymbol)
+            assertEquals(m.id, r.marketId)
+        }
+    }
+
+    @Test
+    fun kenya_usesIdfRdlAndVat16() {
+        val m = Calc.Markets.KENYA
+        val c = Calc.computeImport(1000.0, 0.0, 0.25, 0.0, m)
+        assertEquals(35.0, c.idf, 1e-6)
+        assertEquals(20.0, c.rdl, 1e-6)
+        assertEquals(0.0, c.ciss, 1e-6)
+        assertEquals((1000.0 + 250.0 + 35.0 + 20.0) * 0.16, c.vat, 1e-6)
+    }
+
+    @Test
+    fun southAfrica_usesVat15AndNoNigeriaLevies() {
+        val m = Calc.Markets.SOUTH_AFRICA
+        val c = Calc.computeImport(1000.0, 0.0, 0.20, 0.0, m)
+        assertEquals(0.0, c.idf, 1e-6)
+        assertEquals(0.0, c.rdl, 1e-6)
+        assertEquals(0.0, c.ciss, 1e-6)
+        assertEquals((1000.0 + 200.0) * 0.15, c.vat, 1e-6)
+    }
 }

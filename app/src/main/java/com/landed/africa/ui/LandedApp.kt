@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -33,6 +34,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,6 +46,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -60,7 +65,8 @@ private fun fmt(v: Double, digits: Int = 0): String {
     return DecimalFormat(pattern).format(v)
 }
 
-private fun ngn(v: Double, digits: Int = 0): String = "₦" + fmt(v, digits)
+private fun money(v: Double, symbol: String, digits: Int = 0): String = symbol + fmt(v, digits)
+private fun ratePct(v: Double): String = fmt(v * 100, 1).removeSuffix(".0") + "%"
 private fun pct(v: Double, digits: Int = 1): String =
     if (v.isNaN() || v.isInfinite()) "—" else fmt(v * 100, digits) + "%"
 
@@ -71,6 +77,8 @@ private fun i(s: String): Int = s.toIntOrNull() ?: 1
 fun LandedApp() {
     LandedTheme {
         Surface(color = Palette.Paper, modifier = Modifier.fillMaxSize()) {
+            var marketId by rememberSaveable { mutableStateOf(Calc.Markets.NIGERIA.id) }
+            val market = Calc.Markets.byId(marketId)
             val topInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
             val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
             Box(Modifier.fillMaxSize()) {
@@ -81,9 +89,9 @@ fun LandedApp() {
                         .statusBarsPadding()
                         .navigationBarsPadding()
                 ) {
-                    TopBar()
-                    Hero()
-                    CalculatorBody()
+                    TopBar(market) { marketId = it.id }
+                    Hero(market)
+                    CalculatorBody(market)
                 }
                 // 顶部不透明遮罩：滚动时内容不会跑到状态栏图标下面
                 Box(
@@ -107,7 +115,8 @@ fun LandedApp() {
 
 // ---------------- top bar ----------------
 @Composable
-private fun TopBar() {
+private fun TopBar(market: Calc.Market, onSelect: (Calc.Market) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -129,31 +138,55 @@ private fun TopBar() {
             Text("LANDED COST", fontSize = 8.sp, letterSpacing = 2.sp, color = Palette.Muted, fontWeight = FontWeight.SemiBold)
         }
         Spacer(Modifier.weight(1f))
-        Surface(
-            shape = RoundedCornerShape(999.dp),
-            color = Palette.Surface,
-            border = BorderStroke(1.dp, Palette.Line2)
-        ) {
-            Text(
-                "🇳🇬 尼日利亚 · Jumia",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                color = Palette.Ink2,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-            )
+        Box {
+            Surface(
+                onClick = { expanded = true },
+                shape = RoundedCornerShape(999.dp),
+                color = Palette.Surface,
+                border = BorderStroke(1.dp, Palette.Line2),
+                modifier = Modifier.testTag("market-switcher")
+            ) {
+                Row(
+                    Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "${market.flag} ${market.countryZh} · ${market.platform}",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Palette.Ink2
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text("▾", fontSize = 10.sp, color = Palette.Muted)
+                }
+            }
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                Calc.Markets.all.forEach { m ->
+                    DropdownMenuItem(
+                        text = {
+                            Column {
+                                Text("${m.flag} ${m.countryZh} · ${m.platform}", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                Text("${m.currencyCode} · 佣金 ${m.commissionRange}", fontSize = 10.sp, color = Palette.Dim)
+                            }
+                        },
+                        onClick = { onSelect(m); expanded = false },
+                        modifier = Modifier.testTag("market-${m.id}")
+                    )
+                }
+            }
         }
     }
 }
 
 // ---------------- hero ----------------
 @Composable
-private fun Hero() {
+private fun Hero(market: Calc.Market) {
     Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(7.dp).clip(CircleShape).background(Palette.Amber))
             Spacer(Modifier.width(8.dp))
             Text(
-                "NIGERIA · JUMIA FBJ · 2026",
+                "${market.countryEn} · ${market.platform.uppercase()} · 2026",
                 fontFamily = FontFamily.Monospace,
                 fontSize = 11.sp,
                 letterSpacing = 2.sp,
@@ -179,9 +212,9 @@ private fun Hero() {
         )
         Spacer(Modifier.height(18.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            StatChip("7.5%", "进口增值税", Modifier.weight(1f))
-            StatChip("5–20%", "Jumia 佣金", Modifier.weight(1f))
-            StatChip("140+天", "资金周转", Modifier.weight(1f))
+            StatChip(ratePct(market.vatRate), "进口增值税", Modifier.weight(1f))
+            StatChip(market.commissionRange, "平台佣金", Modifier.weight(1f))
+            StatChip("${market.cycleDaysSea}+天", "资金周转", Modifier.weight(1f))
         }
     }
 }
@@ -205,7 +238,7 @@ private fun StatChip(value: String, label: String, modifier: Modifier = Modifier
 
 // ---------------- calculator ----------------
 @Composable
-private fun CalculatorBody() {
+private fun CalculatorBody(market: Calc.Market) {
     var unitCost by rememberSaveable { mutableStateOf("45") }
     var qty by rememberSaveable { mutableStateOf("500") }
     var weight by rememberSaveable { mutableStateOf("0.6") }
@@ -217,10 +250,11 @@ private fun CalculatorBody() {
     var ret by rememberSaveable { mutableStateOf("12") }
     var ad by rememberSaveable { mutableStateOf("5") }
     var price by rememberSaveable { mutableStateOf("") }
-    var fx by rememberSaveable { mutableStateOf("1500") }
+    val fxDefault = if (market.fxLocalPerUSD % 1.0 == 0.0) market.fxLocalPerUSD.toInt().toString() else market.fxLocalPerUSD.toString()
+    var fx by rememberSaveable(market.id) { mutableStateOf(fxDefault) }
     var cny by rememberSaveable { mutableStateOf("7.1") }
-    var cert by rememberSaveable { mutableStateOf("600") }
-    var clearance by rememberSaveable { mutableStateOf("450") }
+    var cert by rememberSaveable(market.id) { mutableStateOf(market.defaultCertUSD.toInt().toString()) }
+    var clearance by rememberSaveable(market.id) { mutableStateOf(market.defaultClearanceUSD.toInt().toString()) }
     var domestic by rememberSaveable { mutableStateOf("800") }
     var advancedOpen by rememberSaveable { mutableStateOf(false) }
 
@@ -240,7 +274,8 @@ private fun CalculatorBody() {
         fxCNYperUSD = d(cny).coerceAtLeast(1.0),
         certUSD = d(cert),
         clearanceUSD = d(clearance),
-        domesticFixedCNY = d(domestic)
+        domesticFixedCNY = d(domestic),
+        market = market
     )
     val res = Calc.compute(inputs)
 
@@ -270,7 +305,7 @@ private fun CalculatorBody() {
             Spacer(Modifier.height(12.dp))
             DropdownField(
                 "品类（决定进口关税）",
-                Calc.Data.dutyCats.map { it.key to (it.label + " · " + fmt(it.rate * 100, 0) + "%") },
+                market.dutyCats.map { it.key to (it.label + " · " + fmt(it.rate * 100, 0) + "%") },
                 dutyKey, { dutyKey = it }
             )
         }
@@ -279,7 +314,7 @@ private fun CalculatorBody() {
         StepCard("03", "渠道与利润", "平台抽多少，你想赚多少") {
             DropdownField(
                 "类目（决定平台佣金）",
-                Calc.Data.commCats.map { it.key to (it.label + " · " + fmt(it.rate * 100, 0) + "%") },
+                market.commCats.map { it.key to (it.label + " · " + fmt(it.rate * 100, 0) + "%") },
                 commKey, { commKey = it }
             )
             Spacer(Modifier.height(12.dp))
@@ -290,7 +325,7 @@ private fun CalculatorBody() {
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 LabeledField("广告占比", "%", ad, { ad = it }, Modifier.weight(1f), KeyboardType.Decimal)
-                LabeledField("目标售价", "₦ · 留空自动", price, { price = it }, Modifier.weight(1f), KeyboardType.Decimal)
+                LabeledField("目标售价", "${market.currencySymbol} · 留空自动", price, { price = it }, Modifier.weight(1f), KeyboardType.Decimal)
             }
         }
         Spacer(Modifier.height(12.dp))
@@ -306,6 +341,8 @@ private fun CalculatorBody() {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .testTag("advanced-toggle")
+                        .minimumInteractiveComponentSize()
                         .clickable { advancedOpen = !advancedOpen }
                         .padding(vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -316,17 +353,30 @@ private fun CalculatorBody() {
                     Spacer(Modifier.width(8.dp))
                     Text("汇率 / 认证 / 杂费", fontSize = 12.sp, color = Palette.Dim)
                     Spacer(Modifier.weight(1f))
-                    Text("恢复默认", fontSize = 12.sp, color = Palette.Muted, fontWeight = FontWeight.Bold,
-                        modifier = Modifier.clickable {
-                            unitCost = "45"; qty = "500"; weight = "0.6"; volume = "0.004"
-                            freightKey = "sea_lcl"; dutyKey = "electronics"; commKey = "electronics"
-                            margin = "20"; ret = "12"; ad = "5"; price = ""
-                            fx = "1500"; cny = "7.1"; cert = "600"; clearance = "450"; domestic = "800"
-                        })
+                    Box(
+                        modifier = Modifier
+                            .testTag("btn-reset")
+                            .heightIn(min = 44.dp)
+                            .minimumInteractiveComponentSize()
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable {
+                                unitCost = "45"; qty = "500"; weight = "0.6"; volume = "0.004"
+                                freightKey = "sea_lcl"; dutyKey = "electronics"; commKey = "electronics"
+                                margin = "20"; ret = "12"; ad = "5"; price = ""
+                                fx = fxDefault; cny = "7.1"
+                                cert = market.defaultCertUSD.toInt().toString()
+                                clearance = market.defaultClearanceUSD.toInt().toString()
+                                domestic = "800"
+                            }
+                            .padding(horizontal = 6.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("恢复默认", fontSize = 12.sp, color = Palette.Muted, fontWeight = FontWeight.Bold)
+                    }
                 }
                 if (advancedOpen) {
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        LabeledField("汇率", "NGN / USD", fx, { fx = it }, Modifier.weight(1f), KeyboardType.Decimal)
+                        LabeledField("汇率", market.fxLabel, fx, { fx = it }, Modifier.weight(1f), KeyboardType.Decimal)
                         LabeledField("汇率", "CNY / USD", cny, { cny = it }, Modifier.weight(1f), KeyboardType.Decimal)
                     }
                     Spacer(Modifier.height(12.dp))
@@ -350,10 +400,10 @@ private fun CalculatorBody() {
         Spacer(Modifier.height(16.dp))
         RiskCard(res, inputs)
         Spacer(Modifier.height(16.dp))
-        SourcesCard()
+        SourcesCard(market)
         Spacer(Modifier.height(18.dp))
         Text(
-            "本工具为估算器，不构成报价或法律/税务意见。税率、费率、汇率以官方与合同为准 · v0.1",
+            "本工具为估算器，不构成报价或法律/税务意见。税率、费率、汇率以官方与合同为准 · v0.2 多市场",
             fontSize = 11.sp,
             color = Palette.Dim,
             modifier = Modifier.padding(bottom = 28.dp)
@@ -369,23 +419,24 @@ private fun ResultCard(r: Calc.Result) {
             Text("单件落地成本", fontSize = 11.sp, letterSpacing = 2.sp, color = Palette.ReceiptMuted, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(6.dp))
             Row(verticalAlignment = Alignment.Bottom) {
-                Text("₦", fontSize = 17.sp, color = Palette.ReceiptAccent, fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(bottom = 6.dp, end = 2.dp))
+                Text(r.currencySymbol, fontSize = 17.sp, color = Palette.ReceiptAccent, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(bottom = 6.dp, end = 2.dp).testTag("currency-symbol"))
                 Text(fmt(r.unitNGN), fontFamily = FontFamily.Monospace, fontSize = 42.sp,
-                    fontWeight = FontWeight.SemiBold, color = Color.White, letterSpacing = (-1.5).sp)
+                    fontWeight = FontWeight.SemiBold, color = Color.White, letterSpacing = (-1.5).sp,
+                    modifier = Modifier.testTag("result-landed"))
             }
             Spacer(Modifier.height(6.dp))
-            Text("≈ ¥" + fmt(r.unitCNY, 2) + " · 含关税 " + fmt(r.dutyRate * 100, 0) + "% · 增值税 7.5% · 认证与清关",
+            Text("≈ ¥" + fmt(r.unitCNY, 2) + " · 含关税 " + fmt(r.dutyRate * 100, 0) + "% · 增值税 " + ratePct(r.vatRate) + " · 认证与清关",
                 fontSize = 12.sp, color = Palette.ReceiptMuted)
             Spacer(Modifier.height(16.dp))
             Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0x22FFFFFF)))
-            ResultRow("建议售价", ngn(r.priceNGN), Color.White)
-            ResultRow("单件净利 / 净利率", ngn(r.netProfitNGN) + "  " + pct(r.netMargin, 1),
-                if (r.netProfitNGN >= 0) Color(0xFF6FE3B6) else Color(0xFFFF8C77))
+            ResultRow("建议售价", money(r.priceNGN, r.currencySymbol), Color.White, tag = "result-price")
+            ResultRow("单件净利 / 净利率", money(r.netProfitNGN, r.currencySymbol) + "  " + pct(r.netMargin, 1),
+                if (r.netProfitNGN >= 0) Color(0xFF6FE3B6) else Color(0xFFFF8C77), tag = "result-profit")
             ResultRow("回本率", if (r.recoverRatio.isInfinite()) "无法回本" else pct(r.recoverRatio, 0),
-                when { r.recoverRatio > 1 -> Color(0xFFFF8C77); r.recoverRatio > 0.85 -> Palette.ReceiptAccent; else -> Color(0xFF6FE3B6) })
-            ResultRow("整批总成本", ngn(r.batchNGN), Color.White)
-            ResultRow("资金周转", r.cycleDays.toString() + " 天", Color.White, last = true)
+                when { r.recoverRatio > 1 -> Color(0xFFFF8C77); r.recoverRatio > 0.85 -> Palette.ReceiptAccent; else -> Color(0xFF6FE3B6) }, tag = "result-be")
+            ResultRow("整批总成本", money(r.batchNGN, r.currencySymbol), Color.White, tag = "result-batch")
+            ResultRow("资金周转", r.cycleDays.toString() + " 天", Color.White, last = true, tag = "result-cycle")
             Spacer(Modifier.height(8.dp))
             Text("估算值，非报价 · 所有参数可改，结果实时重算", fontSize = 10.sp, color = Palette.ReceiptMuted)
         }
@@ -393,14 +444,15 @@ private fun ResultCard(r: Calc.Result) {
 }
 
 @Composable
-private fun ResultRow(label: String, value: String, valueColor: Color, last: Boolean = false) {
+private fun ResultRow(label: String, value: String, valueColor: Color, last: Boolean = false, tag: String? = null) {
     Column {
         Row(
             modifier = Modifier.fillMaxWidth().padding(vertical = 11.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(label, fontSize = 12.sp, color = Palette.ReceiptMuted, modifier = Modifier.weight(1f))
-            Text(value, fontFamily = FontFamily.Monospace, fontSize = 14.sp, color = valueColor)
+            Text(value, fontFamily = FontFamily.Monospace, fontSize = 14.sp, color = valueColor,
+                modifier = if (tag != null) Modifier.testTag(tag) else Modifier)
         }
         if (!last) Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0x14FFFFFF)))
     }
@@ -464,7 +516,7 @@ private fun LabeledField(
                 unfocusedContainerColor = Palette.FieldBg,
                 cursorColor = Palette.Amber
             ),
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth().testTag(label).semantics { contentDescription = label }
         )
     }
 }
@@ -482,7 +534,7 @@ private fun DropdownField(label: String, options: List<Pair<String, String>>, se
                 shape = RoundedCornerShape(11.dp),
                 color = Palette.FieldBg,
                 border = BorderStroke(1.dp, Palette.Line2),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth().testTag(label)
             ) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(selectedLabel, fontSize = 13.sp, color = Palette.Ink, modifier = Modifier.weight(1f), maxLines = 1)
@@ -523,7 +575,7 @@ private fun CostStructureCard(r: Calc.Result) {
     val total = r.stack.sumOf { it.usd }
     SectionCard("成本结构", "每一件落地价里都有什么") {
         Row(
-            Modifier.fillMaxWidth().height(38.dp).clip(RoundedCornerShape(11.dp))
+            Modifier.fillMaxWidth().height(38.dp).clip(RoundedCornerShape(11.dp)).testTag("cost-bar")
                 .border(1.dp, Palette.Line2, RoundedCornerShape(11.dp))
         ) {
             r.stack.filter { it.usd > 0 }.forEach { item ->
@@ -552,13 +604,13 @@ private fun MoneyTableCard(r: Calc.Result) {
     SectionCard("钱去哪了", "整批金额与占比") {
         Row(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
             Text("项目", fontSize = 10.sp, color = Palette.Dim, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1.3f))
-            Text("金额 ₦", fontSize = 10.sp, color = Palette.Dim, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
+            Text("金额 ${r.currencySymbol}", fontSize = 10.sp, color = Palette.Dim, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
             Text("占比", fontSize = 10.sp, color = Palette.Dim, fontWeight = FontWeight.Bold, modifier = Modifier.weight(0.6f), textAlign = TextAlign.End)
         }
         r.stack.filter { it.usd > 0 }.forEach { item ->
             Row(Modifier.fillMaxWidth().padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(item.label, fontSize = 12.sp, color = Palette.Ink2, modifier = Modifier.weight(1.3f))
-                Text(ngn(item.usd * r.fxNGNperUSD), fontFamily = FontFamily.Monospace, fontSize = 12.sp,
+                Text(money(item.usd * r.fxNGNperUSD, r.currencySymbol), fontFamily = FontFamily.Monospace, fontSize = 12.sp,
                     color = Palette.Ink, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
                 Text(pct(item.usd / total, 1), fontFamily = FontFamily.Monospace, fontSize = 12.sp,
                     color = Palette.Muted, modifier = Modifier.weight(0.6f), textAlign = TextAlign.End)
@@ -567,7 +619,7 @@ private fun MoneyTableCard(r: Calc.Result) {
         }
         Row(Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("落地总成本", fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = Palette.Ink, modifier = Modifier.weight(1.3f))
-            Text(ngn(r.batchNGN), fontFamily = FontFamily.Monospace, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+            Text(money(r.batchNGN, r.currencySymbol), fontFamily = FontFamily.Monospace, fontSize = 12.sp, fontWeight = FontWeight.Bold,
                 color = Palette.Ink, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
             Text("100%", fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = Palette.Muted,
                 modifier = Modifier.weight(0.6f), textAlign = TextAlign.End)
@@ -577,7 +629,7 @@ private fun MoneyTableCard(r: Calc.Result) {
 
 @Composable
 private fun SensitivityCard(r: Calc.Result) {
-    SectionCard("敏感性", "汇率 × 退货率 → 单件净利 ₦") {
+    SectionCard("敏感性", "汇率 × 退货率 → 单件净利 ${r.currencySymbol}") {
         Row(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
             Text("汇率 \\ 退货率", fontSize = 10.sp, color = Palette.Dim, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1.4f))
             r.sensitivity[0].cells.forEach { c ->
@@ -590,8 +642,8 @@ private fun SensitivityCard(r: Calc.Result) {
                 Text(
                     when {
                         row.fxShock == 0.0 -> "基准 · " + fmt(row.fx, 0)
-                        row.fxShock > 0 -> "奈拉贬值 15% ↓"
-                        else -> "奈拉升值 15% ↑"
+                        row.fxShock > 0 -> "本币贬值 15% ↓"
+                        else -> "本币升值 15% ↑"
                     },
                     fontSize = 11.sp, color = Palette.Ink2, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1.4f)
                 )
@@ -608,7 +660,7 @@ private fun SensitivityCard(r: Calc.Result) {
             Box(Modifier.fillMaxWidth().height(1.dp).background(Palette.Line))
         }
         Spacer(Modifier.height(10.dp))
-        Text("格内为单件净利（₦）。基准售价 " + ngn(r.priceNGN) + "，单件落地 " + ngn(r.unitNGN) + "。奈拉贬值时你的美元成本折成奈拉更贵，售价却未必能同步涨。",
+        Text("格内为单件净利（${r.currencySymbol}）。基准售价 " + money(r.priceNGN, r.currencySymbol) + "，单件落地 " + money(r.unitNGN, r.currencySymbol) + "。本币贬值时你的美元成本折成本币更贵，售价却未必能同步涨。",
             fontSize = 11.sp, lineHeight = 16.sp, color = Palette.Muted)
     }
 }
@@ -621,13 +673,13 @@ private fun buildRisks(r: Calc.Result, i: Calc.Inputs): List<Risk> {
     val m = r.netMargin
     if (r.recoverRatio > 1) out.add(Risk("high", "整批卖完也回不了本",
         "按当前售价需卖出 " + fmt(Math.ceil(r.breakEvenUnits)) + " 件才能覆盖成本，而本批只有 " + fmt(r.qty.toDouble()) + " 件。要么涨价，要么压落地成本。"))
-    if (m < 0) out.add(Risk("high", "单件亏损", "扣完平台费、广告和退货后，每件亏 " + ngn(-r.netProfitNGN) + "。"))
-    else if (m < 0.08) out.add(Risk("mid", "净利率偏薄（" + pct(m, 1) + "）", "奈拉再贬 10% 就可能转亏，建议把售价锚定美元成本做动态调价。"))
-    if (i.returnRate >= 0.2) out.add(Risk("high", "退货 / 妥投失败率 ≥ 20%", "尼日利亚货到付款比例高，未妥投会产生往返运费与仓储，实际损失常高于账面。"))
-    else if (i.returnRate >= 0.15) out.add(Risk("mid", "退货率偏高", "按 " + pct(i.returnRate, 0) + " 计，每件已摊入 " + ngn(r.returnCostNGN) + " 退货成本。"))
-    if (r.dutyRate >= 0.2) out.add(Risk("mid", "高税品类（关税 20%）", "关税 + VAT 占落地价大头，低值重货尤其容易被运费和税吃穿。"))
+    if (m < 0) out.add(Risk("high", "单件亏损", "扣完平台费、广告和退货后，每件亏 " + money(-r.netProfitNGN, r.currencySymbol) + "。"))
+    else if (m < 0.08) out.add(Risk("mid", "净利率偏薄（" + pct(m, 1) + "）", "本币再贬 10% 就可能转亏，建议把售价锚定美元成本做动态调价。"))
+    if (i.returnRate >= 0.2) out.add(Risk("high", "退货 / 妥投失败率 ≥ 20%", "${r.marketName}电商（尤其货到付款）未妥投会产生往返运费与仓储，实际损失常高于账面。"))
+    else if (i.returnRate >= 0.15) out.add(Risk("mid", "退货率偏高", "按 " + pct(i.returnRate, 0) + " 计，每件已摊入 " + money(r.returnCostNGN, r.currencySymbol) + " 退货成本。"))
+    if (r.dutyRate >= 0.2) out.add(Risk("mid", "高税品类（关税 " + fmt(r.dutyRate * 100, 0) + "%）", "关税 + 增值税占落地价大头，低值重货尤其容易被运费和税吃穿。"))
     if (r.certSchemes.isNotEmpty() && i.certUSD <= 0) out.add(Risk("high", "该品类需要 " + r.certSchemes.joinToString(" / ") + "，但认证费为 0", "没有认证无法清关 / 上架，请把认证费补进高级参数。"))
-    if (r.cycleDays > 150) out.add(Risk("mid", "资金周转约 " + r.cycleDays + " 天", "资金占用约 " + ngn(r.capitalLockedNGN) + "，备货前先确认能撑多久。"))
+    if (r.cycleDays > 150) out.add(Risk("mid", "资金周转约 " + r.cycleDays + " 天", "资金占用约 " + money(r.capitalLockedNGN, r.currencySymbol) + "，备货前先确认能撑多久。"))
     if (i.adRate > 0.15) out.add(Risk("mid", "广告占比 > 15%", "独立站 / 新店常见，但会直接吃掉净利，先测自然转化。"))
     if (out.isEmpty()) out.add(Risk("ok", "主要风险可控", "按当前参数，净利率与回本率都在安全区，仍建议小批量试单验证真实退货率与运费。"))
     return out
@@ -636,7 +688,7 @@ private fun buildRisks(r: Calc.Result, i: Calc.Inputs): List<Risk> {
 @Composable
 private fun RiskCard(r: Calc.Result, i: Calc.Inputs) {
     SectionCard("风险提示", "按当前参数自动判定") {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.testTag("risk-list"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             buildRisks(r, i).forEach { risk ->
                 val color = when (risk.level) {
                     "high" -> Palette.Red
@@ -658,13 +710,9 @@ private fun RiskCard(r: Calc.Result, i: Calc.Inputs) {
 }
 
 @Composable
-private fun SourcesCard() {
+private fun SourcesCard(market: Calc.Market) {
     val uri = LocalUriHandler.current
-    val sources = listOf(
-        "Nigeria Import Duty Calculator 2026（Precebol，含关税/CISS/ETLS/VAT 公式）" to "https://www.precebollogistics.co.uk/nigeria-import-duty-calculator",
-        "Jumia 开店及运营费用列表（2026 版，佣金 5%–20%）" to "https://vendor.jumia.com/shop-onboarding-and-related-operating-fees-in-chinese/",
-        "Jumia 官方在线定价计算" to "https://www.jumia-global.com.cn/static/JumiaPrice.html"
-    )
+    val sources = market.sources
     SectionCard("数据来源与假设", "都能点开核对") {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             sources.forEach { (label, url) ->
@@ -676,11 +724,11 @@ private fun SourcesCard() {
                         fontSize = 12.sp,
                         lineHeight = 18.sp,
                         color = Palette.Green,
-                        modifier = Modifier.clickable { runCatching { uri.openUri(url) } }
+                        modifier = Modifier.minimumInteractiveComponentSize().clickable { runCatching { uri.openUri(url) } }
                     )
                 }
             }
-            Text("汇率、运费、认证费为参考值，输入区可直接改；改动后所有结果实时重算。",
+            Text(market.note + "。汇率、运费、认证费均为参考值，输入区可直接改；改动后所有结果实时重算。",
                 fontSize = 12.sp, color = Palette.Muted)
         }
     }
