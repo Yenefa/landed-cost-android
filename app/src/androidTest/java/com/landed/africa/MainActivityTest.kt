@@ -130,6 +130,14 @@ class MainActivityTest {
     }
 
     @Test
+    fun compareCard_showsAllThreeMarkets() {
+        rule.onNodeWithTag("compare-card").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithTag("compare-row-NG").assertExists()
+        rule.onNodeWithTag("compare-row-KE").assertExists()
+        rule.onNodeWithTag("compare-row-ZA").assertExists()
+    }
+
+    @Test
     fun pdfExport_producesValidPdf() {
         val r = com.landed.africa.engine.Calc.compute(com.landed.africa.engine.Calc.Inputs())
         val bytes = com.landed.africa.engine.PdfExport.render(r)

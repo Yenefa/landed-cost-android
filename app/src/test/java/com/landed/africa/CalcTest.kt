@@ -2,6 +2,7 @@ package com.landed.africa
 
 import com.landed.africa.engine.Calc
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -96,5 +97,72 @@ class CalcTest {
         assertEquals(0.0, c.rdl, 1e-6)
         assertEquals(0.0, c.ciss, 1e-6)
         assertEquals((1000.0 + 200.0) * 0.15, c.vat, 1e-6)
+    }
+
+    // ---------- 三国对比 ----------
+
+    @Test
+    fun compareMarkets_returnsThreeInOrder() {
+        val rows = Calc.compareMarkets(Calc.Inputs())
+        assertEquals(3, rows.size)
+        assertEquals(listOf("NG", "KE", "ZA"), rows.map { it.marketId })
+        assertEquals(listOf("₦", "KSh", "R"), rows.map { it.currencySymbol })
+    }
+
+    @Test
+    fun compareMarkets_eachMatchesStandaloneComputeWithDefaults() {
+        val base = Calc.Inputs()
+        val rows = Calc.compareMarkets(base)
+        rows.forEach { row ->
+            val market = Calc.Markets.byId(row.marketId)
+            // 用该市场默认汇率 / 自动认证费 / 默认清关费单独算一次
+            val single = Calc.compute(
+                base.copy(
+                    market = market,
+                    fxNGNperUSD = market.fxLocalPerUSD,
+                    certUSD = -1.0,
+                    clearanceUSD = market.defaultClearanceUSD,
+                )
+            )
+            assertEquals(single.unitNGN, row.unitLocal, 1e-6)
+            assertEquals(single.unitCNY, row.unitCNY, 1e-6)
+            assertEquals(single.netMargin, row.netMargin, 1e-9)
+            assertEquals(single.cycleDays, row.cycleDays)
+        }
+    }
+
+    @Test
+    fun compareMarkets_onlyCurrentMarketUsesEditedFx() {
+        val base = Calc.Inputs().copy(fxNGNperUSD = 1800.0)
+        val rows = Calc.compareMarkets(base)
+        val ng = rows.first { it.marketId == "NG" }
+        val ke = rows.first { it.marketId == "KE" }
+
+        // 当前市场（NG）用改后的 1800
+        assertEquals(Calc.compute(base).unitNGN, ng.unitLocal, 1e-6)
+        // 非当前市场（KE）不受污染，仍等于它的默认计算
+        val keDefault = Calc.compute(
+            base.copy(
+                market = Calc.Markets.KENYA,
+                fxNGNperUSD = Calc.Markets.KENYA.fxLocalPerUSD,
+                certUSD = -1.0,
+                clearanceUSD = Calc.Markets.KENYA.defaultClearanceUSD,
+            )
+        )
+        assertEquals(keDefault.unitNGN, ke.unitLocal, 1e-6)
+        assertNotEquals(ng.unitLocal, ke.unitLocal)
+    }
+
+    @Test
+    fun compareMarkets_exactlyOneIsCurrent() {
+        val rows = Calc.compareMarkets(Calc.Inputs().copy(market = Calc.Markets.KENYA))
+        assertEquals(1, rows.count { it.isCurrent })
+        assertEquals("KE", rows.first { it.isCurrent }.marketId)
+    }
+
+    @Test
+    fun compareMarkets_landedCostsDifferAcrossMarkets() {
+        val rows = Calc.compareMarkets(Calc.Inputs())
+        assertEquals(3, rows.map { Math.round(it.unitLocal) }.distinct().size)
     }
 }

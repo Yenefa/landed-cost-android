@@ -227,6 +227,26 @@ object Calc {
     data class SensCell(val returnRate: Double, val netProfit: Double, val netMargin: Double)
     data class SensRow(val fxShock: Double, val fx: Double, val cells: List<SensCell>)
 
+    /** 三国对比的一行：同一批货落在某个市场的结果 */
+    data class MarketCompare(
+        val marketId: String,
+        val flag: String,
+        val countryZh: String,
+        val platform: String,
+        val currencyCode: String,
+        val currencySymbol: String,
+        val unitLocal: Double,
+        val unitCNY: Double,
+        val price: Double,
+        val netProfit: Double,
+        val netMargin: Double,
+        val cycleDays: Int,
+        val recoverRatio: Double,
+        val dutyRate: Double,
+        val vatRate: Double,
+        val isCurrent: Boolean,
+    )
+
     data class Result(
         val unitNGN: Double, val unitCNY: Double, val batchNGN: Double,
         val dutyRate: Double, val commissionRate: Double,
@@ -370,4 +390,46 @@ object Calc {
             marketId = market.id, marketName = market.countryZh, vatRate = market.vatRate,
         )
     }
+
+    /**
+     * 三国对比：同一批货分别落在三个市场的结果。
+     *
+     * 语义与 Web 一致：
+     *  - 当前市场用用户改过的汇率 / 认证费 / 清关费；
+     *  - 其他市场用该市场默认值（certUSD = -1 表示按品类自动算认证费），
+     *    否则拿尼日利亚的汇率去算肯尼亚会算错。
+     */
+    fun compareMarkets(base: Inputs): List<MarketCompare> =
+        Markets.all.map { m ->
+            val inputs =
+                if (m.id == base.market.id) {
+                    base.copy(market = m)
+                } else {
+                    base.copy(
+                        market = m,
+                        fxNGNperUSD = m.fxLocalPerUSD,
+                        certUSD = -1.0,
+                        clearanceUSD = m.defaultClearanceUSD,
+                    )
+                }
+            val r = compute(inputs)
+            MarketCompare(
+                marketId = m.id,
+                flag = m.flag,
+                countryZh = m.countryZh,
+                platform = m.platform,
+                currencyCode = m.currencyCode,
+                currencySymbol = m.currencySymbol,
+                unitLocal = r.unitNGN,
+                unitCNY = r.unitCNY,
+                price = r.priceNGN,
+                netProfit = r.netProfitNGN,
+                netMargin = r.netMargin,
+                cycleDays = r.cycleDays,
+                recoverRatio = r.recoverRatio,
+                dutyRate = r.dutyRate,
+                vatRate = r.vatRate,
+                isCurrent = m.id == base.market.id,
+            )
+        }
 }

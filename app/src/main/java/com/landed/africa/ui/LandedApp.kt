@@ -399,6 +399,8 @@ private fun CalculatorBody(market: Calc.Market) {
                 }
             )
         }
+        Spacer(Modifier.height(12.dp))
+        CompareCard(inputs)
         Spacer(Modifier.height(16.dp))
 
         StepCard("01", "产品与货值", "你卖什么，进多少") {
@@ -557,6 +559,87 @@ private fun ResultCard(r: Calc.Result) {
             ResultRow("资金周转", r.cycleDays.toString() + " 天", Color.White, last = true, tag = "result-cycle")
             Spacer(Modifier.height(8.dp))
             Text("估算值，非报价 · 所有参数可改，结果实时重算", fontSize = 10.sp, color = Palette.ReceiptMuted)
+        }
+    }
+}
+
+/**
+ * 三国对比卡片：同一批货分别落在 NG / KE / ZA 的结果。
+ * 当前市场用用户改过的参数，其他市场用各自默认值（见 Calc.compareMarkets）。
+ */
+@Composable
+private fun CompareCard(inputs: Calc.Inputs) {
+    val rows = remember(inputs) { Calc.compareMarkets(inputs) }
+    if (rows.isEmpty()) return
+    val best = rows.maxByOrNull { it.netMargin } ?: rows.first()
+
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = Palette.Surface,
+        border = BorderStroke(1.dp, Palette.Line),
+        modifier = Modifier.fillMaxWidth().testTag("compare-card")
+    ) {
+        Column(Modifier.padding(18.dp)) {
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text("三国对比", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Palette.Ink)
+                Spacer(Modifier.width(8.dp))
+                Text("同一批货，发到哪里最划算", fontSize = 11.sp, color = Palette.Muted)
+            }
+            Spacer(Modifier.height(10.dp))
+            rows.forEachIndexed { idx, r ->
+                if (idx > 0) {
+                    Box(Modifier.fillMaxWidth().height(1.dp).background(Palette.Line))
+                }
+                CompareRow(r, isBest = r.marketId == best.marketId)
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "净利率最高：" + best.countryZh + "（" + pct(best.netMargin, 1) + "）。其他市场用各自默认汇率与费率。",
+                fontSize = 10.sp,
+                color = Palette.Muted
+            )
+        }
+    }
+}
+
+@Composable
+private fun CompareRow(r: Calc.MarketCompare, isBest: Boolean) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp).testTag("compare-row-" + r.marketId)
+    ) {
+        Text(r.flag, fontSize = 18.sp)
+        Spacer(Modifier.width(8.dp))
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(r.countryZh, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Palette.Ink)
+                Spacer(Modifier.width(5.dp))
+                Text(r.platform, fontSize = 10.sp, color = Palette.Muted)
+                if (r.isCurrent) {
+                    Spacer(Modifier.width(5.dp))
+                    Text("当前", fontSize = 9.sp, color = Palette.Amber2, fontWeight = FontWeight.Bold)
+                }
+                if (isBest) {
+                    Spacer(Modifier.width(5.dp))
+                    Text("最优", fontSize = 9.sp, color = Palette.Green, fontWeight = FontWeight.Bold)
+                }
+            }
+            Text(
+                "关税 " + fmt(r.dutyRate * 100, 0) + "% · VAT " + ratePct(r.vatRate) + " · " + r.cycleDays + " 天",
+                fontSize = 10.sp,
+                color = Palette.Muted,
+                maxLines = 1
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+        Column(horizontalAlignment = Alignment.End) {
+            Text(money(r.unitLocal, r.currencySymbol), fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Palette.Ink)
+            Text(
+                "净利率 " + pct(r.netMargin, 1),
+                fontSize = 10.sp,
+                color = if (isBest) Palette.Green else Palette.Muted,
+                fontWeight = if (isBest) FontWeight.Bold else FontWeight.Normal
+            )
         }
     }
 }
