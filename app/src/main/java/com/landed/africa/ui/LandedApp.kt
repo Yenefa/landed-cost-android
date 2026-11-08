@@ -1,5 +1,9 @@
 package com.landed.africa.ui
 
+import android.content.Context
+import android.content.Intent
+import android.graphics.Bitmap
+import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -39,12 +43,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
@@ -56,8 +62,12 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
 import com.landed.africa.engine.Calc
+import java.io.File
+import java.io.FileOutputStream
 import java.text.DecimalFormat
+import kotlinx.coroutines.launch
 
 private fun fmt(v: Double, digits: Int = 0): String {
     if (v.isNaN() || v.isInfinite()) return "—"
@@ -72,6 +82,28 @@ private fun pct(v: Double, digits: Int = 1): String =
 
 private fun d(s: String): Double = s.toDoubleOrNull() ?: 0.0
 private fun i(s: String): Int = s.toIntOrNull() ?: 1
+
+private fun shareResultCard(context: Context, r: Calc.Result) {
+    val bitmap = com.landed.africa.engine.ShareCard.render(r)
+    val dir = File(context.cacheDir, "share").apply { mkdirs() }
+    val file = File(dir, "landed-${System.currentTimeMillis()}.png")
+    FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+    val text = buildString {
+        append("落地价 · ${r.marketName}\n")
+        append("单件落地 ${r.currencySymbol}${fmt(r.unitNGN)}\n")
+        append("建议售价 ${r.currencySymbol}${fmt(r.priceNGN)} · 净利率 ${pct(r.netMargin, 1)}\n")
+        append("关税 ${fmt(r.dutyRate * 100, 0)}% · 增值税 ${ratePct(r.vatRate)} · 回本率 ${pct(r.recoverRatio, 0)}\n")
+        append("自己算一遍：落地价 App")
+    }
+    val send = Intent(Intent.ACTION_SEND).apply {
+        type = "image/png"
+        putExtra(Intent.EXTRA_STREAM, uri)
+        putExtra(Intent.EXTRA_TEXT, text)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    context.startActivity(Intent.createChooser(send, "分享落地价"))
+}
 
 @Composable
 fun LandedApp() {
@@ -279,8 +311,25 @@ private fun CalculatorBody(market: Calc.Market) {
     )
     val res = Calc.compute(inputs)
 
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var sharing by remember { mutableStateOf(false) }
+
     Column(modifier = Modifier.padding(horizontal = 20.dp)) {
         ResultCard(res)
+        Spacer(Modifier.height(10.dp))
+        ShareRow(
+            busy = sharing,
+            onClick = {
+                if (sharing) return@ShareRow
+                sharing = true
+                scope.launch {
+                    runCatching { shareResultCard(context, res) }
+                        .onFailure { Toast.makeText(context, "分享失败：${it.message}", Toast.LENGTH_SHORT).show() }
+                    sharing = false
+                }
+            }
+        )
         Spacer(Modifier.height(16.dp))
 
         StepCard("01", "产品与货值", "你卖什么，进多少") {
@@ -439,6 +488,35 @@ private fun ResultCard(r: Calc.Result) {
             ResultRow("资金周转", r.cycleDays.toString() + " 天", Color.White, last = true, tag = "result-cycle")
             Spacer(Modifier.height(8.dp))
             Text("估算值，非报价 · 所有参数可改，结果实时重算", fontSize = 10.sp, color = Palette.ReceiptMuted)
+        }
+    }
+}
+
+@Composable
+private fun ShareRow(busy: Boolean, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(12.dp),
+        color = Palette.Ink,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 44.dp)
+            .testTag("btn-share")
+            .semantics { contentDescription = "分享结果卡片" }
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(vertical = 12.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("↗", fontSize = 14.sp, color = Palette.ReceiptAccent, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.width(8.dp))
+            Text(
+                if (busy) "正在生成图片…" else "分享这张结果卡",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                color = Palette.Paper
+            )
         }
     }
 }

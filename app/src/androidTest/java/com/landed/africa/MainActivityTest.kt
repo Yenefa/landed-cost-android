@@ -98,6 +98,26 @@ class MainActivityTest {
     }
 
     @Test
+    fun shareCard_rendersValidBitmap() {
+        val r = com.landed.africa.engine.Calc.compute(com.landed.africa.engine.Calc.Inputs())
+        val bmp = com.landed.africa.engine.ShareCard.render(r)
+        org.junit.Assert.assertEquals(1080, bmp.width)
+        org.junit.Assert.assertEquals(1350, bmp.height)
+        // 左上角应为纸色底、中部应为小票深色，证明真的画上了内容
+        val paper = bmp.getPixel(10, 10)
+        org.junit.Assert.assertEquals(0xF5, android.graphics.Color.red(paper))
+        val receipt = bmp.getPixel(540, 700)
+        org.junit.Assert.assertTrue("小票卡应为深色", android.graphics.Color.red(receipt) < 60)
+        bmp.recycle()
+    }
+
+    @Test
+    fun shareButton_existsAndIsAccessible() {
+        rule.onNodeWithTag("btn-share").performScrollTo().assertIsDisplayed().assertHeightIsAtLeast(44.dp)
+            .assertContentDescriptionEquals("分享结果卡片")
+    }
+
+    @Test
     fun canScrollToBottom_withoutCrash() {
         rule.onNodeWithTag("cost-bar").performScrollTo().assertIsDisplayed()
         rule.onNodeWithTag("risk-list").performScrollTo().assertIsDisplayed()
