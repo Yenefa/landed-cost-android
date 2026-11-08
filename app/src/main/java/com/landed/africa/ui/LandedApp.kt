@@ -87,6 +87,26 @@ private fun pct(v: Double, digits: Int = 1): String =
 private fun d(s: String): Double = s.toDoubleOrNull() ?: 0.0
 private fun i(s: String): Int = s.toIntOrNull() ?: 1
 
+/** 导出 A4 PDF 到系统下载目录（Android 10+ 走 MediaStore，无需存储权限）。 */
+private fun exportPdf(context: Context, r: Calc.Result) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+        Toast.makeText(context, "当前系统版本请用「分享」导出", Toast.LENGTH_SHORT).show()
+        return
+    }
+    val bytes = com.landed.africa.engine.PdfExport.render(r)
+    val name = "landed-${System.currentTimeMillis()}.pdf"
+    val values = ContentValues().apply {
+        put(MediaStore.Downloads.DISPLAY_NAME, name)
+        put(MediaStore.Downloads.MIME_TYPE, "application/pdf")
+        put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/落地价")
+    }
+    val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+        ?: throw IllegalStateException("无法创建下载条目")
+    context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+        ?: throw IllegalStateException("无法写入 PDF")
+    Toast.makeText(context, "已导出 PDF：Downloads/落地价", Toast.LENGTH_SHORT).show()
+}
+
 private fun shareResultCard(context: Context, r: Calc.Result) {    val bitmap = com.landed.africa.engine.ShareCard.render(r)
     val dir = File(context.cacheDir, "share").apply { mkdirs() }
     val file = File(dir, "landed-${System.currentTimeMillis()}.png")
@@ -359,13 +379,23 @@ private fun CalculatorBody(market: Calc.Market) {
                 }
             )
             ShareAction(
-                text = "保存到相册",
+                text = "存相册",
                 modifier = Modifier.weight(1f),
                 tag = "btn-save",
                 desc = "保存结果卡片到相册",
                 onClick = {
                     runCatching { saveCardToGallery(context, res) }
                         .onFailure { Toast.makeText(context, "保存失败：${it.message}", Toast.LENGTH_SHORT).show() }
+                }
+            )
+            ShareAction(
+                text = "PDF",
+                modifier = Modifier.weight(1f),
+                tag = "btn-pdf",
+                desc = "导出 PDF 到下载目录",
+                onClick = {
+                    runCatching { exportPdf(context, res) }
+                        .onFailure { Toast.makeText(context, "导出失败：${it.message}", Toast.LENGTH_SHORT).show() }
                 }
             )
         }

@@ -124,6 +124,21 @@ class MainActivityTest {
     }
 
     @Test
+    fun pdfButton_existsAndIsAccessible() {
+        rule.onNodeWithTag("btn-pdf").performScrollTo().assertIsDisplayed().assertHeightIsAtLeast(44.dp)
+            .assertContentDescriptionEquals("导出 PDF 到下载目录")
+    }
+
+    @Test
+    fun pdfExport_producesValidPdf() {
+        val r = com.landed.africa.engine.Calc.compute(com.landed.africa.engine.Calc.Inputs())
+        val bytes = com.landed.africa.engine.PdfExport.render(r)
+        org.junit.Assert.assertTrue("PDF 至少 2KB", bytes.size > 2048)
+        val head = String(bytes, 0, 5, Charsets.US_ASCII)
+        org.junit.Assert.assertEquals("%PDF-", head)
+    }
+
+    @Test
     fun canScrollToBottom_withoutCrash() {
         rule.onNodeWithTag("cost-bar").performScrollTo().assertIsDisplayed()
         rule.onNodeWithTag("risk-list").performScrollTo().assertIsDisplayed()

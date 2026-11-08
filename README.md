@@ -3,7 +3,7 @@
 把 Web 版「非洲落地成本计算器」原生化：**Kotlin + Jetpack Compose + Material 3**，单 Activity，无 WebView。
 计算内核从 Web 版 `calc.js` 一比一移植，逻辑与测试用例保持一致。
 
-- 包名：`com.landed.africa` ｜ 应用名：落地价 ｜ versionName 0.3.1（多市场 + 分享卡）
+- 包名：`com.landed.africa` ｜ 应用名：落地价 ｜ versionName 0.4.0（多市场 + 分享卡 + PDF）
 - minSdk 26 ｜ targetSdk 35 ｜ compileSdk 35
 - 产物：`app-debug.apk`（v0.2 约 9.6 MB，debug 签名，可直接装）
 
@@ -82,7 +82,7 @@ app/src/test/java/com/landed/africa/CalcTest.kt   # 9 个 JVM 单测（含三市
 
 覆盖：尼日利亚税费公式、默认参数自洽、涨价增利、退货增本、贬值增本、认证识别、三市场均产出正利润与本币符号、肯尼亚 IDF/RDL/VAT16%、南非 VAT15% 无尼日利亚附加费。
 
-### Compose instrumentation（11，真机）
+### Compose instrumentation（13，真机）
 
 ```powershell
 .\gradlew.bat :app:assembleDebug :app:assembleDebugAndroidTest
@@ -92,9 +92,9 @@ adb shell am instrument -w -r -e class com.landed.africa.MainActivityTest `
   com.landed.africa.test/androidx.test.runner.AndroidJUnitRunner
 ```
 
-覆盖：默认结果渲染、输入实时重算、关税切换重算、高级面板展开、44dp 触控、字段无障碍标签、滚动到底、市场切换改币种、分享卡渲染、分享/保存按钮可达性。
+覆盖：默认结果渲染、输入实时重算、关税切换重算、高级面板展开、44dp 触控、字段无障碍标签、滚动到底、市场切换改币种、分享卡渲染、分享/保存/PDF 按钮可达性、PDF 结构与 `%PDF-` 头。
 
-结果：**11/11 通过**（PEHM00 / Android 12）。截图 `_design_audit/android-v02/`、`_design_audit/android-v03/`。
+结果：**13/13 通过**（PEHM00 / Android 12）。截图 `_design_audit/android-v02/`、`_design_audit/android-v03/`。
 
 ### 多市场参数（参考值，App 内可核对来源）
 
@@ -126,5 +126,5 @@ adb shell am instrument -w -r -e class com.landed.africa.MainActivityTest `
 
 - ✅ v0.2 多市场切换（Kenya/Jumia、South Africa/Takealot）
 - ✅ v0.3 分享卡（1080×1350 PNG）+ 保存到相册
-- v0.4 导出 PDF
-- v0.4 汇率/运价在线更新
+- ✅ v0.4 A4 PDF 导出（Downloads/落地价）
+- v0.5 汇率/运价在线更新
